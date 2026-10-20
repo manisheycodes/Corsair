@@ -13,6 +13,8 @@ from sklearn.model_selection import KFold, StratifiedKFold, cross_val_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from .diagnostics import analyze_data_risks
+
 
 def profile_dataset(path: Path, target: str | None, task_type: str | None) -> tuple[dict, list[str]]:
     frame = read_table(path)
@@ -54,6 +56,26 @@ def profile_dataset(path: Path, target: str | None, task_type: str | None) -> tu
     duplicate_rows = int(frame.duplicated().sum())
     if duplicate_rows:
         warnings.append(f"{duplicate_rows} duplicate row(s) were detected; review whether repeated records are expected.")
+    diagnostics = analyze_data_risks(frame, target)
+    for risk in diagnostics["leakage_risks"]:
+        message = f"Potential target leakage in '{risk['column']}': {risk['reason']}"
+        (blockers if risk["severity"] == "blocker" else warnings).append(message)
+    if diagnostics["identifier_candidates"]:
+        warnings.append(
+            "Possible identifier column(s) may encourage memorization and should normally be excluded: "
+            + ", ".join(diagnostics["identifier_candidates"][:5])
+            + "."
+        )
+    if diagnostics["high_missing_features"]:
+        warnings.append(
+            "Feature column(s) with at least 80% missing values need review: "
+            + ", ".join(diagnostics["high_missing_features"][:5])
+            + "."
+        )
+    if diagnostics["conflicting_duplicate_feature_rows"]:
+        warnings.append(
+            f"{diagnostics['conflicting_duplicate_feature_rows']} duplicate feature pattern(s) have conflicting target values."
+        )
     profile = {
         "rows": len(frame), "columns": len(frame.columns), "column_names": frame.columns.tolist(),
         "dtypes": {column: str(dtype) for column, dtype in frame.dtypes.items()},
@@ -61,7 +83,7 @@ def profile_dataset(path: Path, target: str | None, task_type: str | None) -> tu
         "target": target, "task_type": task_type,
         "target_distribution": frame[target].value_counts(dropna=False).head(20).to_dict() if target in frame else {},
         "quality": {"feature_columns": feature_columns, "usable_feature_columns": usable_features, "empty_feature_columns": empty_features, "constant_feature_columns": constant_features},
-        "warnings": warnings,
+        "warnings": warnings, "diagnostics": diagnostics,
     }
     return profile, blockers
 
