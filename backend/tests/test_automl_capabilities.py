@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.diagnostics import analyze_data_risks
 from app.feature_engineering import prepare_features
+from app.clustering import cluster_search_spaces, evaluate_clustering, summarize_clusters
 from app.ml import profile_dataset
 from app.schemas import ApprovalRequest
 from app.search import candidate_search_spaces
@@ -114,7 +115,28 @@ def test_each_candidate_has_a_bounded_hyperparameter_search_space():
     classification = candidate_search_spaces("classification")
     regression = candidate_search_spaces("regression")
 
-    assert set(classification) == {"logistic_regression", "random_forest", "hist_gradient_boosting"}
-    assert set(regression) == {"ridge", "random_forest", "hist_gradient_boosting"}
+    assert set(classification) == {
+        "logistic_regression", "decision_tree", "random_forest", "extra_trees", "adaboost",
+        "gradient_boosting", "hist_gradient_boosting", "support_vector_machine", "k_nearest_neighbors",
+    }
+    assert set(regression) == {
+        "ridge", "decision_tree", "random_forest", "extra_trees", "adaboost",
+        "gradient_boosting", "hist_gradient_boosting", "support_vector_regression", "k_nearest_neighbors",
+    }
     assert all(candidate.parameter_grid for candidate in [*classification.values(), *regression.values()])
-    assert classification["logistic_regression"].parameter_grid["model__C"] == [0.1, 1.0, 10.0]
+    assert classification["logistic_regression"].parameter_grid["model__C"] == [0.1, 1.0]
+
+
+def test_clustering_search_is_bounded_and_reports_profiles_and_noise():
+    spaces = cluster_search_spaces()
+    assert set(spaces) == {"kmeans", "agglomerative", "gaussian_mixture", "dbscan", "birch"}
+    assert sum(map(len, spaces.values())) <= 15
+
+    frame = pd.DataFrame({"amount": [1.0, 2.0, 10.0, 11.0], "region": ["north", "north", "south", "south"]})
+    profiles, assignments = summarize_clusters(frame, [0, 0, 1, -1])
+    metrics = evaluate_clustering(frame[["amount"]].to_numpy(), [0, 0, 1, -1])
+
+    assert [profile["size"] for profile in profiles] == [2, 1, 1]
+    assert profiles[0]["features"]["region"] == "north"
+    assert [assignment["row_number"] for assignment in assignments] == [1, 2, 3, 4]
+    assert metrics["noise_points"] == 1

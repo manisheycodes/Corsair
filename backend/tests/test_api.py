@@ -123,7 +123,7 @@ def test_workflow_requires_approval_then_exposes_frontend_state():
 
     plan_before_data = client.get(f"/projects/{project_id}/run-plan", headers=HEADERS)
     assert plan_before_data.status_code == 200
-    assert [candidate["name"] for candidate in plan_before_data.json()["candidates"]] == ["logistic_regression", "random_forest", "hist_gradient_boosting"]
+    assert len(plan_before_data.json()["candidates"]) == 9
     assert plan_before_data.json()["metric_direction"] == "higher_is_better"
 
 
@@ -145,3 +145,47 @@ def test_regression_workflow_and_report():
     assert report.status_code == 200
     assert report.json()["run"]["result"]["primary_metric"] == "mae"
     assert report.json()["model_card"]["validation"]["method"] == "k_fold"
+
+
+def test_clustering_workflow_produces_target_free_report():
+    project = client.post(
+        "/projects", headers=HEADERS,
+        json={"name": "Customer groups", "problem_statement": "Cluster similar customer records into segments."},
+    ).json()
+    project_id = project["id"]
+    assert project["spec"]["task_type"] == "clustering"
+    assert client.post(
+        f"/projects/{project_id}/approve-spec", headers=HEADERS,
+        json={"task_type": "clustering"},
+    ).status_code == 200
+
+    frame = pd.DataFrame({
+        "annual_spend": list(range(30)) + list(range(100, 130)),
+        "visits": [value % 6 for value in range(30)] + [10 + value % 6 for value in range(30)],
+    })
+    upload = client.post(
+        f"/projects/{project_id}/datasets", headers=HEADERS,
+        files={"file": ("customers.csv", frame.to_csv(index=False).encode(), "text/csv")},
+    )
+    assert upload.status_code == 200
+    assert upload.json()["training_ready"] is True
+
+    plan = client.get(f"/projects/{project_id}/run-plan", headers=HEADERS).json()
+    assert plan["target_column"] is None
+    assert len(plan["candidates"]) == 5
+    run = client.post(f"/projects/{project_id}/runs", headers=HEADERS).json()
+    for _ in range(100):
+        result = client.get(f"/runs/{run['id']}", headers=HEADERS).json()
+        if result["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.1)
+    assert result["status"] == "completed", result.get("error")
+    run_result = result["result"]
+    assert run_result["task_type"] == "clustering"
+    assert run_result["cluster_summary"]["clusters_found"] >= 2
+    assert len(run_result["cluster_assignments"]) == len(frame)
+    assert sum(profile["size"] for profile in run_result["cluster_profiles"]) == len(frame)
+
+    report = client.get(f"/projects/{project_id}/report", headers=HEADERS)
+    assert report.status_code == 200
+    assert report.json()["run"]["result"]["cluster_profiles"]
