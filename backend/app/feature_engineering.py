@@ -36,10 +36,12 @@ class DateTimeFeatures(BaseEstimator, TransformerMixin):
         return np.column_stack(output) if output else np.empty((len(frame), 0))
 
 
-def prepare_features(frame: pd.DataFrame, target: str) -> tuple[pd.DataFrame, ColumnTransformer, dict[str, Any]]:
+def prepare_features(
+    frame: pd.DataFrame, target: str, exclude_columns: list[str] | None = None
+) -> tuple[pd.DataFrame, ColumnTransformer, dict[str, Any]]:
     raw = frame.drop(columns=[target])
     diagnostics = analyze_data_risks(frame, target)
-    excluded = list(diagnostics["identifier_candidates"])
+    excluded = list(dict.fromkeys([*diagnostics["identifier_candidates"], *(exclude_columns or [])]))
     features = raw.drop(columns=excluded, errors="ignore")
     datetime_columns = [column for column in features.columns if _is_datetime_feature(features[column], column)]
     numeric_columns = [

@@ -113,7 +113,7 @@ def add_message(project_id: str, payload: MessageRequest):
 def approve_spec(project_id: str, payload: ApprovalRequest):
     row = project_or_404(project_id)
     spec = db.load(row["spec_json"])
-    spec.update({"task_type": payload.task_type, "target_column": payload.target_column, "primary_metric": payload.primary_metric or ("f1" if payload.task_type == "classification" else "mae"), "missing_information": [], "readiness": "approved"})
+    spec.update({"task_type": payload.task_type, "target_column": payload.target_column, "primary_metric": payload.primary_metric or ("f1" if payload.task_type == "classification" else "mae"), "validation_strategy": payload.validation_strategy, "time_column": payload.time_column, "group_column": payload.group_column, "missing_information": [], "readiness": "approved"})
     with db.connection() as conn:
         conn.execute("UPDATE projects SET spec_json = ?, status = ? WHERE id = ?", (db.dump(spec), ProjectStatus.AWAITING_DATA, project_id))
     db.record_workflow_event(project_id, "spec_approved", "Task type, target column, and metric approved; awaiting historical data.")
@@ -136,7 +136,7 @@ def upload_dataset(project_id: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=413, detail="Upload exceeds 25 MB limit")
     spec = db.load(row["spec_json"])
     try:
-        profile, blockers = profile_dataset(target_path, spec.get("target_column"), spec.get("task_type"))
+        profile, blockers = profile_dataset(target_path, spec.get("target_column"), spec.get("task_type"), spec)
     except Exception as exc:
         target_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=f"Could not parse dataset: {exc}") from exc
@@ -197,7 +197,7 @@ def _execute_run(run_id: str, spec_json: str, dataset_path: str):
         conn.execute("UPDATE runs SET status = ?, updated_at = ? WHERE id = ?", ("running", db.now(), run_id))
         conn.execute("INSERT INTO run_events (run_id, status, detail, created_at) VALUES (?, ?, ?, ?)", (run_id, "running", "Training and cross-validation started.", db.now()))
     try:
-        result = train(Path(dataset_path), spec["target_column"], spec["task_type"], spec["primary_metric"], ARTIFACT_DIR / f"{run_id}.joblib")
+        result = train(Path(dataset_path), spec["target_column"], spec["task_type"], spec["primary_metric"], ARTIFACT_DIR / f"{run_id}.joblib", spec)
         with db.connection() as conn:
             conn.execute("UPDATE runs SET status = ?, result_json = ?, updated_at = ? WHERE id = ?", ("completed", db.dump(result), db.now(), run_id))
             conn.execute("UPDATE projects SET status = ? WHERE id = (SELECT project_id FROM runs WHERE id = ?)", (ProjectStatus.COMPLETED, run_id))
