@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import pandas as pd
+from pydantic import ValidationError
 
 from app.diagnostics import analyze_data_risks
 from app.feature_engineering import prepare_features
 from app.ml import profile_dataset
+from app.schemas import ApprovalRequest
+from app.validation import build_validation_setup, resolve_metric
 
 
 def test_diagnostics_find_exact_target_copy_and_identifier():
@@ -54,3 +57,53 @@ def test_feature_engineering_expands_dates_and_excludes_identifiers():
     assert summary["excluded_identifiers"] == ["customer_id"]
     assert transformed.shape[0] == 30
     assert transformed.shape[1] > len(features.columns)
+
+
+def test_validation_selects_time_and_group_aware_splits():
+    frame = pd.DataFrame(
+        {
+            "event_time": pd.date_range("2025-01-01", periods=30)[::-1],
+            "account": [f"A-{index // 5}" for index in range(30)],
+            "value": range(30),
+            "target": [0, 1] * 15,
+        }
+    )
+
+    temporal = build_validation_setup(
+        frame, "target", "classification", {"validation_strategy": "time", "time_column": "event_time"}
+    )
+    grouped = build_validation_setup(
+        frame, "target", "classification", {"validation_strategy": "group", "group_column": "account"}
+    )
+
+    assert temporal.method == "time_series"
+    assert temporal.frame.iloc[0]["event_time"] < temporal.frame.iloc[-1]["event_time"]
+    assert grouped.method == "group_k_fold"
+    assert grouped.groups is not None
+    assert grouped.excluded_features == ["account"]
+
+
+def test_metric_resolution_rejects_mismatched_metrics():
+    assert resolve_metric("regression", "rmse")[1] == "neg_root_mean_squared_error"
+    try:
+        resolve_metric("classification", "mae")
+    except ValueError as exc:
+        assert "not supported" in str(exc)
+    else:
+        raise AssertionError("classification must reject regression metrics")
+
+
+def test_approval_rejects_missing_split_columns_and_wrong_metric():
+    try:
+        ApprovalRequest(task_type="classification", target_column="target", primary_metric="mae")
+    except ValidationError as exc:
+        assert "not supported" in str(exc)
+    else:
+        raise AssertionError("approval must reject a metric from another task type")
+
+    try:
+        ApprovalRequest(task_type="regression", target_column="target", validation_strategy="time")
+    except ValidationError as exc:
+        assert "time_column is required" in str(exc)
+    else:
+        raise AssertionError("time validation must require a time column")

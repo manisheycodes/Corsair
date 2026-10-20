@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TaskType(str, Enum):
@@ -36,6 +36,9 @@ class ProjectSpec(BaseModel):
     target_column: str | None = None
     prediction_unit: str | None = None
     primary_metric: str | None = None
+    validation_strategy: str = "auto"
+    time_column: str | None = None
+    group_column: str | None = None
     required_fields: list[str] = []
     recommendations: list[dict] = []
     assumptions: list[str] = []
@@ -47,6 +50,20 @@ class ApprovalRequest(BaseModel):
     task_type: TaskType
     target_column: str = Field(min_length=1, max_length=128)
     primary_metric: str | None = None
+    validation_strategy: str = Field(default="auto", pattern="^(auto|random|group|time)$")
+    time_column: str | None = Field(default=None, min_length=1, max_length=128)
+    group_column: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_strategy_fields(self):
+        from .validation import resolve_metric
+
+        if self.validation_strategy == "time" and not self.time_column:
+            raise ValueError("time_column is required for time-aware validation")
+        if self.validation_strategy == "group" and not self.group_column:
+            raise ValueError("group_column is required for group-aware validation")
+        resolve_metric(self.task_type.value, self.primary_metric)
+        return self
 
 
 class ProjectResponse(BaseModel):

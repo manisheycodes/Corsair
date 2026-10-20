@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .schemas import TaskType
+from .validation import describe_validation, resolve_metric
 
 
 _CANDIDATES = {
@@ -23,14 +24,14 @@ def build_run_plan(spec: dict[str, Any], profile: dict[str, Any] | None = None) 
     task_type = spec.get("task_type")
     if task_type not in _CANDIDATES:
         raise ValueError("A classification or regression task is required before planning a run")
-    metric = spec.get("primary_metric") or ("f1" if task_type == TaskType.CLASSIFICATION.value else "mae")
+    metric, _, metric_direction = resolve_metric(task_type, spec.get("primary_metric"))
     candidates = [{"name": name, "reason": reason} for name, reason in _CANDIDATES[task_type]]
     plan = {
         "task_type": task_type,
         "target_column": spec.get("target_column"),
         "primary_metric": metric,
-        "metric_direction": "higher_is_better" if metric == "f1" else "lower_is_better",
-        "validation": "stratified 5-fold cross-validation" if task_type == TaskType.CLASSIFICATION.value else "5-fold cross-validation",
+        "metric_direction": metric_direction,
+        "validation": describe_validation(spec, task_type),
         "candidates": candidates,
         "reproducibility": {"random_seed": 42, "preprocessing": "imputation, one-hot encoding, and scaling inside each validation fold"},
     }

@@ -141,4 +141,4 @@ def test_regression_workflow_and_report():
     report = client.get(f"/projects/{project_id}/report", headers=HEADERS)
     assert report.status_code == 200
     assert report.json()["run"]["result"]["primary_metric"] == "mae"
-    assert report.json()["model_card"]["validation"]["method"] == "cross_validation"
+    assert report.json()["model_card"]["validation"]["method"] == "k_fold"
