@@ -31,6 +31,9 @@ def test_classification_workflow():
         time.sleep(0.1)
     assert result["status"] == "completed"
     assert result["result"]["best_model"]
+    assert result["result"]["best_parameters"]
+    assert result["result"]["search"]["method"] == "exhaustive_grid_search"
+    assert all(entry["configurations_evaluated"] >= 2 for entry in result["result"]["leaderboard"])
     assert result["result"]["model_card"]["feature_impact"]["method"] == "permutation_importance_on_training_data"
     assert result["artifact_available"] is True
     events = client.get(f"/runs/{run.json()['id']}/events", headers=HEADERS)

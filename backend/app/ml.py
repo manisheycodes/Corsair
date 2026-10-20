@@ -4,14 +4,13 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
-from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor, RandomForestClassifier, RandomForestRegressor
-from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.inspection import permutation_importance
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 
 from .diagnostics import analyze_data_risks
 from .feature_engineering import prepare_features
+from .search import candidate_search_spaces, public_parameters
 from .validation import build_validation_setup, resolve_metric
 
 
@@ -102,33 +101,50 @@ def train(path: Path, target: str, task_type: str, metric: str, artifact_path: P
     frame = validation.frame
     x, preprocess, feature_engineering = prepare_features(frame, target, validation.excluded_features)
     y = frame[target]
-    if task_type == "classification":
-        candidates = {"logistic_regression": LogisticRegression(max_iter=1000), "random_forest": RandomForestClassifier(n_estimators=150, random_state=42, n_jobs=1), "hist_gradient_boosting": HistGradientBoostingClassifier(random_state=42)}
-    else:
-        candidates = {"ridge": Ridge(), "random_forest": RandomForestRegressor(n_estimators=150, random_state=42, n_jobs=1), "hist_gradient_boosting": HistGradientBoostingRegressor(random_state=42)}
+    candidates = candidate_search_spaces(task_type)
     metric, scoring, metric_direction = resolve_metric(task_type, metric)
     cv = validation.cv
     results = []
     best_name, best_pipeline, best_score = "", None, float("-inf")
-    for name, estimator in candidates.items():
-        pipeline = Pipeline([("preprocess", preprocess), ("model", estimator)])
-        scores = cross_val_score(pipeline, x, y, scoring=scoring, cv=cv, groups=validation.groups, error_score="raise")
-        score = float(scores.mean())
+    for name, candidate in candidates.items():
+        pipeline = Pipeline([("preprocess", preprocess), ("model", candidate.estimator)])
+        search = GridSearchCV(
+            pipeline,
+            candidate.parameter_grid,
+            scoring=scoring,
+            cv=cv,
+            n_jobs=1,
+            refit=True,
+            error_score="raise",
+            return_train_score=False,
+        )
+        search.fit(x, y, groups=validation.groups)
+        score = float(search.best_score_)
         if metric_direction == "lower_is_better":
             score = -score
-        results.append({"model": name, "metric": metric, "score": score, "fold_std": float(scores.std())})
+        best_index = int(search.best_index_)
+        results.append(
+            {
+                "model": name,
+                "metric": metric,
+                "score": score,
+                "fold_std": float(search.cv_results_["std_test_score"][best_index]),
+                "best_parameters": public_parameters(search.best_params_),
+                "configurations_evaluated": len(search.cv_results_["params"]),
+            }
+        )
         comparable = score if metric_direction == "higher_is_better" else -score
         if comparable > best_score:
-            best_name, best_pipeline, best_score = name, pipeline, comparable
-    best_pipeline.fit(x, y)
-    model_card = _build_model_card(best_name, task_type, metric, validation, scoring, best_pipeline, x, y)
+            best_name, best_pipeline, best_score = name, search.best_estimator_, comparable
+    winning_result = next(result for result in results if result["model"] == best_name)
+    model_card = _build_model_card(best_name, task_type, metric, validation, scoring, best_pipeline, x, y, winning_result)
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(best_pipeline, artifact_path)
     results.sort(key=lambda item: item["score"], reverse=metric_direction == "higher_is_better")
-    return {"primary_metric": metric, "metric_direction": metric_direction, "leaderboard": results, "best_model": best_name, "artifact": str(artifact_path.name), "rows_used": len(frame), "features_used": x.columns.tolist(), "feature_engineering": feature_engineering, "validation": {"method": validation.method, "folds": validation.folds}, "random_seed": 42, "model_card": model_card}
+    return {"primary_metric": metric, "metric_direction": metric_direction, "leaderboard": results, "best_model": best_name, "best_parameters": winning_result["best_parameters"], "artifact": str(artifact_path.name), "rows_used": len(frame), "features_used": x.columns.tolist(), "feature_engineering": feature_engineering, "validation": {"method": validation.method, "folds": validation.folds}, "search": {"method": "exhaustive_grid_search", "total_configurations_evaluated": sum(result["configurations_evaluated"] for result in results), "selection_note": "Scores used for tuning and ranking share the same cross-validation splits; use an external test set for an unbiased final estimate."}, "random_seed": 42, "model_card": model_card}
 
 
-def _build_model_card(best_name: str, task_type: str, metric: str, validation, scoring: str, pipeline: Pipeline, x: pd.DataFrame, y: pd.Series) -> dict:
+def _build_model_card(best_name: str, task_type: str, metric: str, validation, scoring: str, pipeline: Pipeline, x: pd.DataFrame, y: pd.Series, winning_result: dict) -> dict:
     impact = {"method": "permutation_importance_on_training_data", "scope": "Exploratory only: impacts are calculated after fitting on the same historical data and are not causal or a substitute for validation.", "top_features": []}
     try:
         importance = permutation_importance(pipeline, x, y, scoring=scoring, n_repeats=3, random_state=42, n_jobs=1)
@@ -141,6 +157,7 @@ def _build_model_card(best_name: str, task_type: str, metric: str, validation, s
         impact["unavailable_reason"] = "Feature impact could not be calculated for this dataset and fitted pipeline."
     return {
         "model": best_name,
+        "best_parameters": winning_result["best_parameters"],
         "task_type": task_type,
         "primary_metric": metric,
         "validation": {"method": validation.method, "folds": validation.folds, "scoring": scoring, "random_seed": 42},
@@ -148,6 +165,7 @@ def _build_model_card(best_name: str, task_type: str, metric: str, validation, s
         "feature_impact": impact,
         "limitations": [
             "Cross-validation estimates may not match future production performance.",
+            "The same cross-validation splits are used for tuning and model ranking; confirm performance on untouched data.",
             "Feature impact is directional, not causal, and can be affected by correlated fields.",
             "This MVP does not perform fairness, privacy, drift, or live-serving assessments.",
         ],
