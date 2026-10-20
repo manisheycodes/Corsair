@@ -104,7 +104,10 @@ def _validate_spec(state: DiscoveryState) -> DiscoveryState:
     spec = ProjectSpec(**state["spec"]).model_dump()
     missing = list(spec.get("missing_information") or [])
 
-    if spec.get("task_type") and spec.get("target_column"):
+    if spec.get("task_type") == "clustering":
+        missing = [item for item in missing if "category" not in item.lower() and "outcome column" not in item.lower()]
+        spec["readiness"] = "ready_for_approval"
+    elif spec.get("task_type") and spec.get("target_column"):
         missing = [item for item in missing if "category" not in item.lower() and "outcome column" not in item.lower()]
         spec["readiness"] = "ready_for_approval"
     else:

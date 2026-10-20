@@ -7,14 +7,18 @@ from .schemas import ProjectSpec, TaskType
 
 CLASSIFICATION_WORDS = {"classify", "classification", "churn", "fraud", "default", "delay", "approve", "yes", "no", "likely", "risk"}
 REGRESSION_WORDS = {"predict price", "forecast", "revenue", "sales", "amount", "cost", "demand", "temperature", "duration"}
+CLUSTERING_WORDS = {"clustering", "cluster", "segment", "group similar", "customer segmentation"}
 
 
 def infer_spec(problem: str) -> ProjectSpec:
     text = problem.lower()
     classification_hits = sum(word in text for word in CLASSIFICATION_WORDS)
     regression_hits = sum(word in text for word in REGRESSION_WORDS)
+    clustering_hits = sum(word in text for word in CLUSTERING_WORDS)
     task_type = None
-    if classification_hits > regression_hits and classification_hits:
+    if clustering_hits and clustering_hits >= max(classification_hits, regression_hits):
+        task_type = TaskType.CLUSTERING
+    elif classification_hits > regression_hits and classification_hits:
         task_type = TaskType.CLASSIFICATION
     elif regression_hits > classification_hits and regression_hits:
         task_type = TaskType.REGRESSION
@@ -24,7 +28,7 @@ def infer_spec(problem: str) -> ProjectSpec:
     missing = []
     if task_type is None:
         missing.append("Should the outcome be a category (classification) or a numeric value (regression)?")
-    if not target:
+    if not target and task_type != TaskType.CLUSTERING:
         missing.append("What is the historical outcome column the model should learn to predict?")
     missing.append("Which fields are available before the prediction needs to be made?")
     return ProjectSpec(
@@ -53,10 +57,13 @@ def apply_message(spec: dict, message: str) -> dict:
     if target:
         updated["target_column"] = target
     text = message.lower()
-    if "classification" in text:
+    if any(word in text for word in CLUSTERING_WORDS):
+        updated["task_type"], updated["primary_metric"], updated["target_column"] = "clustering", None, None
+    elif "classification" in text:
         updated["task_type"], updated["primary_metric"] = "classification", "f1"
     elif "regression" in text:
         updated["task_type"], updated["primary_metric"] = "regression", "mae"
-    updated["missing_information"] = [item for item in updated.get("missing_information", []) if "outcome column" not in item or not updated.get("target_column")]
-    updated["readiness"] = "ready_for_approval" if updated.get("task_type") and updated.get("target_column") else "needs_clarification"
+    updated["missing_information"] = [item for item in updated.get("missing_information", []) if "outcome column" not in item or (updated.get("task_type") != "clustering" and not updated.get("target_column"))]
+    ready = updated.get("task_type") == "clustering" or bool(updated.get("task_type") and updated.get("target_column"))
+    updated["readiness"] = "ready_for_approval" if ready else "needs_clarification"
     return updated

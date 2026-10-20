@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 class TaskType(str, Enum):
     CLASSIFICATION = "classification"
     REGRESSION = "regression"
+    CLUSTERING = "clustering"
 
 
 class ProjectStatus(str, Enum):
@@ -48,7 +49,7 @@ class ProjectSpec(BaseModel):
 
 class ApprovalRequest(BaseModel):
     task_type: TaskType
-    target_column: str = Field(min_length=1, max_length=128)
+    target_column: str | None = Field(default=None, min_length=1, max_length=128)
     primary_metric: str | None = None
     validation_strategy: str = Field(default="auto", pattern="^(auto|random|group|time)$")
     time_column: str | None = Field(default=None, min_length=1, max_length=128)
@@ -58,6 +59,16 @@ class ApprovalRequest(BaseModel):
     def validate_strategy_fields(self):
         from .validation import resolve_metric
 
+        if self.task_type == TaskType.CLUSTERING:
+            if self.target_column:
+                raise ValueError("Clustering does not use a target column")
+            if self.primary_metric:
+                raise ValueError("Clustering uses internal cluster-quality metrics, not a prediction metric")
+            if self.validation_strategy not in {"auto", "random"}:
+                raise ValueError("Clustering currently uses internal metrics and does not accept group/time validation")
+            return self
+        if not self.target_column:
+            raise ValueError("A target column is required for classification and regression")
         if self.validation_strategy == "time" and not self.time_column:
             raise ValueError("time_column is required for time-aware validation")
         if self.validation_strategy == "group" and not self.group_column:
@@ -105,9 +116,9 @@ class RunEvent(BaseModel):
 
 class RunPlanResponse(BaseModel):
     task_type: TaskType
-    target_column: str
-    primary_metric: str
-    metric_direction: str
+    target_column: str | None = None
+    primary_metric: str | None = None
+    metric_direction: str | None = None
     validation: str
     candidates: list[dict[str, str]]
     reproducibility: dict[str, Any]

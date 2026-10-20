@@ -113,10 +113,16 @@ def add_message(project_id: str, payload: MessageRequest):
 def approve_spec(project_id: str, payload: ApprovalRequest):
     row = project_or_404(project_id)
     spec = db.load(row["spec_json"])
-    spec.update({"task_type": payload.task_type, "target_column": payload.target_column, "primary_metric": payload.primary_metric or ("f1" if payload.task_type == "classification" else "mae"), "validation_strategy": payload.validation_strategy, "time_column": payload.time_column, "group_column": payload.group_column, "missing_information": [], "readiness": "approved"})
+    default_metric = "f1" if payload.task_type == "classification" else "mae" if payload.task_type == "regression" else None
+    spec.update({"task_type": payload.task_type, "target_column": payload.target_column, "primary_metric": payload.primary_metric or default_metric, "validation_strategy": payload.validation_strategy, "time_column": payload.time_column, "group_column": payload.group_column, "missing_information": [], "readiness": "approved"})
     with db.connection() as conn:
         conn.execute("UPDATE projects SET spec_json = ?, status = ? WHERE id = ?", (db.dump(spec), ProjectStatus.AWAITING_DATA, project_id))
-    db.record_workflow_event(project_id, "spec_approved", "Task type, target column, and metric approved; awaiting historical data.")
+    approval_detail = (
+        "Clustering analysis approved without a target; awaiting data."
+        if payload.task_type == "clustering"
+        else "Task type, target column, and metric approved; awaiting historical data."
+    )
+    db.record_workflow_event(project_id, "spec_approved", approval_detail)
     return project_response(project_or_404(project_id))
 
 
@@ -153,7 +159,10 @@ def download_data_template(project_id: str):
     spec = db.load(row["spec_json"])
     target = spec.get("target_column") or "target"
     template_path = TEMPLATE_DIR / f"{project_id}.csv"
-    template_path.write_text(f"entity_id,feature_1,feature_2,{target}\nexample-001,,,\n", encoding="utf-8")
+    if spec.get("task_type") == "clustering":
+        template_path.write_text("entity_id,feature_1,feature_2\nexample-001,,\n", encoding="utf-8")
+    else:
+        template_path.write_text(f"entity_id,feature_1,feature_2,{target}\nexample-001,,,\n", encoding="utf-8")
     return FileResponse(template_path, media_type="text/csv", filename=f"{row['name']}-data-template.csv")
 
 
@@ -195,7 +204,7 @@ def _execute_run(run_id: str, spec_json: str, dataset_path: str):
     spec = db.load(spec_json)
     with db.connection() as conn:
         conn.execute("UPDATE runs SET status = ?, updated_at = ? WHERE id = ?", ("running", db.now(), run_id))
-        conn.execute("INSERT INTO run_events (run_id, status, detail, created_at) VALUES (?, ?, ?, ?)", (run_id, "running", "Training and cross-validation started.", db.now()))
+        conn.execute("INSERT INTO run_events (run_id, status, detail, created_at) VALUES (?, ?, ?, ?)", (run_id, "running", "Algorithm fitting and model evaluation started.", db.now()))
     try:
         result = train(Path(dataset_path), spec["target_column"], spec["task_type"], spec["primary_metric"], ARTIFACT_DIR / f"{run_id}.joblib", spec)
         with db.connection() as conn:
@@ -262,6 +271,8 @@ def predict_with_run(run_id: str, payload: PredictionRequest):
     if artifact_path is None:
         raise HTTPException(status_code=404, detail="Model artifact is unavailable")
     result = db.load(row["result_json"], {}) or {}
+    if result.get("task_type") == "clustering" and not result.get("inference_available", False):
+        raise HTTPException(status_code=409, detail="The selected clustering algorithm cannot assign new records; use the fitted cluster labels in the report.")
     try:
         predictions, probabilities = predict_records(artifact_path, result["features_used"], payload.records)
     except (KeyError, ValueError) as exc:
@@ -276,18 +287,24 @@ def get_report(project_id: str):
     if not run:
         raise HTTPException(status_code=409, detail="A completed training run is required before a report is available")
     dataset = db.fetch_one("SELECT * FROM datasets WHERE id = ?", (run["dataset_id"],))
+    run_result = db.load(run["result_json"], {}) or {}
+    limitations = (
+        ["Cluster quality scores describe grouping structure, not prediction accuracy.", "Review cluster profiles and assignments with domain knowledge."]
+        if run_result.get("task_type") == "clustering"
+        else ["Scores are cross-validation estimates, not a guarantee of production performance.", "The model is not deployed by this MVP."]
+    )
     return {
         "project": project_response(project), "dataset_profile": db.load(dataset["profile_json"]),
         "run": run_response(run),
-        "model_card": db.load(run["result_json"], {}).get("model_card"),
-        "limitations": ["Scores are cross-validation estimates, not a guarantee of production performance.", "The model is not deployed by this MVP."],
+        "model_card": run_result.get("model_card"),
+        "limitations": limitations,
     }
 
 
 @app.get("/projects/{project_id}/frontend-contract", dependencies=[Depends(require_api_key)])
 def frontend_contract(project_id: str):
     project_or_404(project_id)
-    return {"project_statuses": [status.value for status in ProjectStatus], "screens": ["discovery", "spec_approval", "data_upload", "data_readiness", "run_progress", "leaderboard", "report", "prediction"], "workflow_endpoint": "/projects/{project_id}/workflow", "authentication": {"header": "X-API-Key", "development_only_default_key": ENVIRONMENT != "production"}, "cors_origins": list(CORS_ORIGINS), "polling": {"endpoint": "/runs/{run_id}", "until": ["completed", "failed"]}}
+    return {"project_statuses": [status.value for status in ProjectStatus], "task_types": ["classification", "regression", "clustering"], "screens": ["discovery", "spec_approval", "data_upload", "data_readiness", "run_progress", "leaderboard", "report", "prediction"], "workflow_endpoint": "/projects/{project_id}/workflow", "authentication": {"header": "X-API-Key", "development_only_default_key": ENVIRONMENT != "production"}, "cors_origins": list(CORS_ORIGINS), "polling": {"endpoint": "/runs/{run_id}", "until": ["completed", "failed"]}}
 
 
 @app.get("/projects/{project_id}/workflow", response_model=WorkflowResponse, dependencies=[Depends(require_api_key)])

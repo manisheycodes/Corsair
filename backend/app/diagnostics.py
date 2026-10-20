@@ -13,7 +13,7 @@ def analyze_data_risks(frame: pd.DataFrame, target: str | None) -> dict[str, Any
     identifiers: list[str] = []
     high_missing: list[str] = []
 
-    if target not in frame.columns:
+    if target is not None and target not in frame.columns:
         return {
             "leakage_risks": risks,
             "identifier_candidates": identifiers,
@@ -21,8 +21,8 @@ def analyze_data_risks(frame: pd.DataFrame, target: str | None) -> dict[str, Any
             "conflicting_duplicate_feature_rows": 0,
         }
 
-    labeled = frame.dropna(subset=[target])
-    target_key = _name_key(target)
+    labeled = frame.dropna(subset=[target]) if target is not None else frame
+    target_key = _name_key(target) if target is not None else ""
     for column in feature_columns:
         series = labeled[column]
         non_missing = series.notna()
@@ -33,7 +33,7 @@ def analyze_data_risks(frame: pd.DataFrame, target: str | None) -> dict[str, Any
         if unique_ratio >= 0.98 and _looks_like_identifier(column):
             identifiers.append(column)
 
-        if non_missing.any() and _equal_values(series[non_missing], labeled.loc[non_missing, target]):
+        if target is not None and non_missing.any() and _equal_values(series[non_missing], labeled.loc[non_missing, target]):
             risks.append(
                 {
                     "column": column,
@@ -54,7 +54,7 @@ def analyze_data_risks(frame: pd.DataFrame, target: str | None) -> dict[str, Any
             )
 
     conflicts = 0
-    if feature_columns and not labeled.empty:
+    if target is not None and feature_columns and not labeled.empty:
         conflicts = int((labeled.groupby(feature_columns, dropna=False)[target].nunique() > 1).sum())
 
     return {
