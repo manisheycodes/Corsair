@@ -30,7 +30,7 @@ def analyze_data_risks(frame: pd.DataFrame, target: str | None) -> dict[str, Any
             high_missing.append(column)
 
         unique_ratio = frame[column].nunique(dropna=True) / max(int(frame[column].notna().sum()), 1)
-        if unique_ratio >= 0.98 and (_looks_like_identifier(column) or not pd.api.types.is_numeric_dtype(frame[column])):
+        if unique_ratio >= 0.98 and _looks_like_identifier(column):
             identifiers.append(column)
 
         if non_missing.any() and _equal_values(series[non_missing], labeled.loc[non_missing, target]):
