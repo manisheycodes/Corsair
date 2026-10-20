@@ -49,7 +49,7 @@ data_ready → running → completed | failed
 | Retrieval | Deterministic local RAG-style ranking over reviewed use cases in `app/knowledge/use_cases.json` |
 | Database | SQLite |
 | Files | Local upload, template, and joblib artifact directories under `backend/data` |
-| Training | scikit-learn 1.7.2 pipelines and cross-validation |
+| Training | scikit-learn 1.7.2 pipelines, bounded grid search, and task-aware cross-validation |
 | Background execution | Bounded in-process `ThreadPoolExecutor` (two workers) |
 | Tests | pytest + FastAPI `TestClient` |
 | Supported Python runtime | Python 3.10+; validated with Python 3.10.11 |
@@ -62,7 +62,11 @@ The main modules are:
 | `app/orchestration.py` | LangGraph discovery and lifecycle-summary graphs |
 | `app/rag.py` | Local reviewed-use-case retrieval |
 | `app/discovery.py` | Deterministic extraction/refinement of task type and target column |
-| `app/ml.py` | Dataset profile, candidate training, cross-validation, model card generation |
+| `app/ml.py` | Dataset profile, optimized candidate training, model card generation |
+| `app/diagnostics.py` | Leakage, identifier, missingness, and conflicting-record diagnostics |
+| `app/feature_engineering.py` | Fold-safe numeric, categorical, and datetime preparation |
+| `app/search.py` | Bounded estimator hyperparameter search spaces |
+| `app/validation.py` | Metric contracts and random/group/time split selection |
 | `app/planning.py` | Candidate/metric/validation plan before a run |
 | `app/inference.py` | Safe completed-model batch prediction |
 | `app/db.py` | SQLite schema, JSON storage, workflow events, interrupted-job recovery |
@@ -111,7 +115,7 @@ Current blockers include:
 
 Current warnings include missing target rows, duplicate records, fully empty columns, and constant columns.
 
-### Candidate models
+### Candidate models and optimization
 
 | Task | Candidates | Primary metric | Validation |
 |---|---|---|---|
@@ -119,6 +123,10 @@ Current warnings include missing target rows, duplicate records, fully empty col
 | Regression | Ridge, Random Forest, Histogram Gradient Boosting | MAE | Cross-validation, up to 5 folds |
 
 Every candidate is wrapped in a scikit-learn pipeline. Numeric fields use median imputation and scaling; categorical fields use most-frequent imputation and one-hot encoding. The preprocessing is fit inside validation folds, avoiding that class of leakage.
+
+Every candidate now runs through a bounded exhaustive grid search. Logistic/ridge regularization, random-forest depth and leaf size, and histogram-gradient-boosting learning rate and leaf count are tuned. Results retain the winning parameters and configuration count. Numeric missingness indicators, rare-category handling, datetime-derived signals, and identifier exclusion are also performed within the pipeline boundary.
+
+Validation can be stratified/shuffled, group-isolated, or chronological. Supported metrics are F1, accuracy, and ROC AUC for classification, and MAE, RMSE, and R² for regression. Incompatible metric/task combinations are rejected during approval.
 
 ### Run plan
 
@@ -249,7 +257,7 @@ The separate command-level record is `backend/docs/git-workflow-report.md`.
 
 ## 12. Known limitations and honest production-readiness assessment
 
-The backend is a strong, tested **local MVP**, not yet a hosted production service. Before a real production release, the following are required:
+The backend is a stronger, tested **local AutoML MVP**, not yet a hosted production service. Before a real production release, the following are required:
 
 - PostgreSQL plus database migrations instead of SQLite.
 - Durable task queue/workers (for example, a managed queue and isolated workers) instead of in-process threads.
@@ -259,6 +267,7 @@ The backend is a strong, tested **local MVP**, not yet a hosted production servi
 - CI, dependency/security scanning, container build, integration/load tests, and operational runbooks.
 - Model governance: fairness checks, drift monitoring, data lineage, approval/access controls, and a proper deployment/serving strategy.
 - More robust RAG infrastructure if reviewed local-use-case retrieval is no longer sufficient.
+- An untouched holdout or nested-validation option for unbiased post-tuning model estimates.
 
 These limitations are documented so the MVP is not overrepresented as a production AutoML platform.
 
