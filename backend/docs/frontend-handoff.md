@@ -21,3 +21,5 @@ While polling a run, also use `GET /runs/{run_id}/events` to render a durable ex
 Use `GET /projects/{id}/workflow` to drive the stepper, current instruction (`next_action`), and activity timeline (`events`). The endpoint is authoritative: do not infer a screen from the client alone. A valid CSV/XLSX upload before the project reaches `awaiting_data` receives `409`; after approval, prevent edits to the discovery conversation and start a new project for a material scope change.
 
 Use `GET /projects/{id}/frontend-contract` for statuses and expected screens.
+
+For the optional Codex advisor, first call `GET /codex/status`. When `available` is true, show a project-level question box that posts `{ "question": "..." }` to `POST /projects/{id}/codex-advice`. Display the returned `answer` as advisory text. The request is synchronous in this local MVP and may take up to the configured Codex timeout.

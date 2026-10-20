@@ -13,6 +13,16 @@ $env:AUTOBUILD_API_KEY = "replace-this-before-sharing"
 
 Open `http://127.0.0.1:8000/docs`; send `X-API-Key` with every endpoint other than `/health`.
 
+## Optional Codex advisor
+
+Corsair can call a locally installed and authenticated Codex CLI to explain the current project, dataset profile, leaderboard, or model card. Check `GET /codex/status`, then send a question to `POST /projects/{project_id}/codex-advice`:
+
+```json
+{ "question": "Why did this model win, and what should I check next?" }
+```
+
+The integration invokes `codex exec` in read-only, non-interactive, ephemeral mode. It sends project metadata and summarized results, not raw uploaded rows. Install Codex and authenticate it with `codex login` before using the endpoint. Optional environment settings are `AUTOBUILD_CODEX_EXECUTABLE`, `AUTOBUILD_CODEX_MODEL`, and `AUTOBUILD_CODEX_TIMEOUT_SECONDS` (default `120`). The endpoint is synchronous for this local MVP.
+
 ## Frontend handoff
 
 The frontend should render discovery, specification approval, data upload, data-readiness blockers, run progress, leaderboard, and report. Read the detailed contract in [docs/frontend-handoff.md](docs/frontend-handoff.md).

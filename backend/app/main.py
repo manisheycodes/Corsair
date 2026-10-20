@@ -10,12 +10,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from . import db
+from .codex_agent import CodexInvocationError, CodexUnavailableError, ask_codex, codex_status, project_context
 from .config import API_KEY, ARTIFACT_DIR, CORS_ORIGINS, DATA_DIR, ENVIRONMENT, MAX_UPLOAD_BYTES, TEMPLATE_DIR, UPLOAD_DIR
 from .inference import predict_records
 from .ml import profile_dataset, train
 from .orchestration import run_followup_discovery, run_initial_discovery, workflow_summary
 from .planning import build_run_plan
-from .schemas import ApprovalRequest, CreateProjectRequest, DatasetResponse, MessageRequest, PredictionRequest, PredictionResponse, ProjectResponse, ProjectSpec, ProjectStatus, RunEvent, RunPlanResponse, RunResponse, WorkflowEvent, WorkflowResponse
+from .schemas import ApprovalRequest, CodexAdviceRequest, CodexAdviceResponse, CreateProjectRequest, DatasetResponse, MessageRequest, PredictionRequest, PredictionResponse, ProjectResponse, ProjectSpec, ProjectStatus, RunEvent, RunPlanResponse, RunResponse, WorkflowEvent, WorkflowResponse
 
 app = FastAPI(title="AutoBuild Backend", version="0.2.0")
 app.add_middleware(
@@ -77,6 +78,11 @@ def ready():
     if not directories_ready:
         raise HTTPException(status_code=503, detail="Backend storage directories are unavailable")
     return {"status": "ready"}
+
+
+@app.get("/codex/status", dependencies=[Depends(require_api_key)])
+def get_codex_status():
+    return codex_status()
 
 
 @app.post("/projects", response_model=ProjectResponse, dependencies=[Depends(require_api_key)])
@@ -301,10 +307,36 @@ def get_report(project_id: str):
     }
 
 
+@app.post(
+    "/projects/{project_id}/codex-advice",
+    response_model=CodexAdviceResponse,
+    dependencies=[Depends(require_api_key)],
+)
+def get_codex_advice(project_id: str, payload: CodexAdviceRequest):
+    project = project_or_404(project_id)
+    dataset = db.fetch_one(
+        "SELECT * FROM datasets WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
+        (project_id,),
+    )
+    run = db.fetch_one(
+        "SELECT * FROM runs WHERE project_id = ? ORDER BY updated_at DESC LIMIT 1",
+        (project_id,),
+    )
+    context = project_context(project, db.load(project["spec_json"]), dataset, run, db.load)
+    try:
+        answer, version = ask_codex(payload.question, context)
+    except CodexUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except CodexInvocationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    db.record_workflow_event(project_id, "codex_advice", "Codex analyzed the current project snapshot.")
+    return CodexAdviceResponse(project_id=project_id, answer=answer, codex_version=version)
+
+
 @app.get("/projects/{project_id}/frontend-contract", dependencies=[Depends(require_api_key)])
 def frontend_contract(project_id: str):
     project_or_404(project_id)
-    return {"project_statuses": [status.value for status in ProjectStatus], "task_types": ["classification", "regression", "clustering"], "screens": ["discovery", "spec_approval", "data_upload", "data_readiness", "run_progress", "leaderboard", "report", "prediction"], "workflow_endpoint": "/projects/{project_id}/workflow", "authentication": {"header": "X-API-Key", "development_only_default_key": ENVIRONMENT != "production"}, "cors_origins": list(CORS_ORIGINS), "polling": {"endpoint": "/runs/{run_id}", "until": ["completed", "failed"]}}
+    return {"project_statuses": [status.value for status in ProjectStatus], "task_types": ["classification", "regression", "clustering"], "screens": ["discovery", "spec_approval", "data_upload", "data_readiness", "run_progress", "leaderboard", "report", "prediction", "codex_advice"], "workflow_endpoint": "/projects/{project_id}/workflow", "codex": {"status_endpoint": "/codex/status", "advice_endpoint": "/projects/{project_id}/codex-advice"}, "authentication": {"header": "X-API-Key", "development_only_default_key": ENVIRONMENT != "production"}, "cors_origins": list(CORS_ORIGINS), "polling": {"endpoint": "/runs/{run_id}", "until": ["completed", "failed"]}}
 
 
 @app.get("/projects/{project_id}/workflow", response_model=WorkflowResponse, dependencies=[Depends(require_api_key)])

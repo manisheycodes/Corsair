@@ -6,7 +6,7 @@ Discovery and specification refinement run through `app/orchestration.py`. The o
 
 The first RAG layer is local and deterministic: `app/rag.py` retrieves reviewed use-case records from `app/knowledge/use_cases.json` and attaches up to three matching recommendations to the project spec. This avoids claiming unsupported intelligence while preserving a production path toward vector retrieval later.
 
-Approved specifications are converted into a deterministic run plan by `app/planning.py`. The plan names the three candidate estimators, metric direction, validation strategy, and reproducibility controls before any training job is queued.
+Approved specifications are converted into a deterministic run plan by `app/planning.py`. The plan names the task-appropriate candidate estimators, metric direction, validation strategy, and reproducibility controls before any training job is queued.
 
 `app/validation.py` owns metric compatibility and split selection. It provides stratified folds for ordinary classification, shuffled folds for ordinary regression, isolated group folds, and chronological time-series folds. Split-defining group columns are excluded from model inputs.
 
@@ -17,6 +17,8 @@ Dataset profiling is also a hard pre-flight gate. It blocks invalid target types
 Completed joblib artifacts remain in the local artifact directory and are served only through a run-specific authenticated endpoint. The service derives the filename from a database result and discards path components before opening it, so request input cannot select arbitrary files.
 
 The same guarded artifact lookup powers batch inference. The prediction endpoint accepts up to 500 tabular records, verifies that every training feature is present, and returns predictions (plus class probabilities when the fitted estimator supports them).
+
+`app/codex_agent.py` is an optional local adapter around `codex exec`. The project advice endpoint passes a compact snapshot containing the specification, data profile, leaderboard, model card, and clustering summaries—but no raw uploaded rows. Codex runs synchronously in ephemeral, read-only, non-interactive mode and cannot change the repository through this integration.
 
 Runtime configuration is environment-based. CORS uses an explicit origin allow-list, the API key must be overridden in production, `/health` exposes liveness metadata, and `/ready` verifies SQLite access plus required storage directories. See `backend/.env.example` for the supported variables.
 

@@ -136,6 +136,16 @@ class PredictionResponse(BaseModel):
     probabilities: list[dict[str, float]] | None = None
 
 
+class CodexAdviceRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=4000)
+
+
+class CodexAdviceResponse(BaseModel):
+    project_id: str
+    answer: str
+    codex_version: str | None = None
+
+
 class WorkflowStage(BaseModel):
     id: str
     label: str

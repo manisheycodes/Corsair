@@ -4,6 +4,7 @@ import time
 import pandas as pd
 from fastapi.testclient import TestClient
 
+import app.main as main_module
 from app.main import app
 
 
@@ -189,3 +190,31 @@ def test_clustering_workflow_produces_target_free_report():
     report = client.get(f"/projects/{project_id}/report", headers=HEADERS)
     assert report.status_code == 200
     assert report.json()["run"]["result"]["cluster_profiles"]
+
+
+def test_codex_advice_receives_the_project_snapshot(monkeypatch):
+    captured = {}
+
+    def fake_ask_codex(question, context):
+        captured["question"] = question
+        captured["context"] = context
+        return "The project needs an uploaded dataset before model comparison.", "codex-cli test"
+
+    monkeypatch.setattr(main_module, "ask_codex", fake_ask_codex)
+    project = client.post(
+        "/projects",
+        headers=HEADERS,
+        json={"name": "Codex review", "problem_statement": "Predict customer churn as a classification outcome."},
+    ).json()
+
+    response = client.post(
+        f"/projects/{project['id']}/codex-advice",
+        headers=HEADERS,
+        json={"question": "What should I do next?"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["codex_version"] == "codex-cli test"
+    assert captured["question"] == "What should I do next?"
+    assert captured["context"]["project"]["name"] == "Codex review"
+    assert captured["context"]["latest_run"] is None
