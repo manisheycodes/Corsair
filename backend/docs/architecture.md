@@ -8,7 +8,11 @@ The first RAG layer is local and deterministic: `app/rag.py` retrieves reviewed 
 
 Approved specifications are converted into a deterministic run plan by `app/planning.py`. The plan names the three candidate estimators, metric direction, validation strategy, and reproducibility controls before any training job is queued.
 
-Dataset profiling is also a hard pre-flight gate. It blocks invalid target types, too-small class support, and unusable feature sets before the executor can start; non-blocking quality findings (missing targets, duplicates, empty or constant fields) are returned as warnings for the UI.
+`app/validation.py` owns metric compatibility and split selection. It provides stratified folds for ordinary classification, shuffled folds for ordinary regression, isolated group folds, and chronological time-series folds. Split-defining group columns are excluded from model inputs.
+
+`app/feature_engineering.py` builds the fold-safe preprocessing graph. It adds numeric missingness indicators, groups rare categories during one-hot encoding, expands datetimes into calendar/recency signals, and excludes likely identifier columns. `app/search.py` defines bounded hyperparameter grids for each candidate; `GridSearchCV` fits preprocessing and estimation together inside every fold.
+
+Dataset profiling is also a hard pre-flight gate. It blocks invalid target types, too-small class support, unusable feature sets, invalid split configurations, and exact target-copy leakage before the executor can start. Non-blocking findings—including missing targets, duplicates, empty/constant fields, identifiers, severe missingness, target-like field names, and contradictory duplicate examples—are returned as warnings for the UI.
 
 Completed joblib artifacts remain in the local artifact directory and are served only through a run-specific authenticated endpoint. The service derives the filename from a database result and discards path components before opening it, so request input cannot select arbitrary files.
 
