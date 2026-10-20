@@ -7,6 +7,7 @@ from app.diagnostics import analyze_data_risks
 from app.feature_engineering import prepare_features
 from app.ml import profile_dataset
 from app.schemas import ApprovalRequest
+from app.search import candidate_search_spaces
 from app.validation import build_validation_setup, resolve_metric
 
 
@@ -107,3 +108,13 @@ def test_approval_rejects_missing_split_columns_and_wrong_metric():
         assert "time_column is required" in str(exc)
     else:
         raise AssertionError("time validation must require a time column")
+
+
+def test_each_candidate_has_a_bounded_hyperparameter_search_space():
+    classification = candidate_search_spaces("classification")
+    regression = candidate_search_spaces("regression")
+
+    assert set(classification) == {"logistic_regression", "random_forest", "hist_gradient_boosting"}
+    assert set(regression) == {"ridge", "random_forest", "hist_gradient_boosting"}
+    assert all(candidate.parameter_grid for candidate in [*classification.values(), *regression.values()])
+    assert classification["logistic_regression"].parameter_grid["model__C"] == [0.1, 1.0, 10.0]
