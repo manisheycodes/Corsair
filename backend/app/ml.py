@@ -4,16 +4,14 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
-from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor, RandomForestClassifier, RandomForestRegressor
-from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.inspection import permutation_importance
 from sklearn.model_selection import KFold, StratifiedKFold, cross_val_score
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .diagnostics import analyze_data_risks
+from .feature_engineering import prepare_features
 
 
 def profile_dataset(path: Path, target: str | None, task_type: str | None) -> tuple[dict, list[str]]:
@@ -94,14 +92,8 @@ def read_table(path: Path) -> pd.DataFrame:
 
 def train(path: Path, target: str, task_type: str, metric: str, artifact_path: Path) -> dict:
     frame = read_table(path).dropna(subset=[target]).copy()
-    x = frame.drop(columns=[target])
+    x, preprocess, feature_engineering = prepare_features(frame, target)
     y = frame[target]
-    numeric = x.select_dtypes(include="number").columns.tolist()
-    categorical = [column for column in x.columns if column not in numeric]
-    preprocess = ColumnTransformer([
-        ("numeric", Pipeline([("impute", SimpleImputer(strategy="median")), ("scale", StandardScaler())]), numeric),
-        ("categorical", Pipeline([("impute", SimpleImputer(strategy="most_frequent")), ("encode", OneHotEncoder(handle_unknown="ignore"))]), categorical),
-    ], remainder="drop")
     if task_type == "classification":
         candidates = {"logistic_regression": LogisticRegression(max_iter=1000), "random_forest": RandomForestClassifier(n_estimators=150, random_state=42, n_jobs=1), "hist_gradient_boosting": HistGradientBoostingClassifier(random_state=42)}
         cv = StratifiedKFold(n_splits=min(5, int(y.value_counts().min())), shuffle=True, random_state=42)
@@ -125,7 +117,7 @@ def train(path: Path, target: str, task_type: str, metric: str, artifact_path: P
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(best_pipeline, artifact_path)
     results.sort(key=lambda item: item["score"], reverse=task_type == "classification")
-    return {"primary_metric": metric, "leaderboard": results, "best_model": best_name, "artifact": str(artifact_path.name), "rows_used": len(frame), "features_used": x.columns.tolist(), "random_seed": 42, "model_card": model_card}
+    return {"primary_metric": metric, "leaderboard": results, "best_model": best_name, "artifact": str(artifact_path.name), "rows_used": len(frame), "features_used": x.columns.tolist(), "feature_engineering": feature_engineering, "random_seed": 42, "model_card": model_card}
 
 
 def _build_model_card(best_name: str, task_type: str, metric: str, cv, scoring: str, pipeline: Pipeline, x: pd.DataFrame, y: pd.Series) -> dict:
