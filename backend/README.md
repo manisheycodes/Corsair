@@ -1,5 +1,9 @@
 # AutoBuild backend MVP
 
+## Contributing changes
+
+Create new work branches from the current GitHub `main` branch so pull requests share its history. Before opening a pull request, fetch the remote branches and check `git merge-base origin/main HEAD`; a commit hash confirms a shared ancestor. Keep local application data under the ignored `backend/data` directory.
+
 The revised full-application plan is in [docs/MASTER_PLAN.md](docs/MASTER_PLAN.md). Day 1 (2026-11-26) adds the research library that the autonomous workflow will use.
 
 ## Research library
