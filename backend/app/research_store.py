@@ -64,5 +64,18 @@ def get_case(case_id: str) -> dict | None:
     return _public(row) if row else None
 
 
+def ingest_cases(records: list[ResearchCase]) -> dict:
+    """Repeated imports are idempotent; changed claims create an audit revision."""
+    outcomes = [save_case(record) for record in records]
+    return {"processed": len(outcomes), "changed": sum(item["changed"] for item in outcomes),
+            "ids": list(dict.fromkeys(item["id"] for item in outcomes))}
+
+
+def case_versions(case_id: str) -> list[dict]:
+    return [{"content_hash": row["content_hash"], "recorded_at": row["recorded_at"],
+             "case": db.load(row["case_json"])} for row in db.fetch_all(
+                 "SELECT * FROM research_versions WHERE case_id=? ORDER BY id", (case_id,))]
+
+
 def _public(row) -> dict:
     return {"id": row["id"], **db.load(row["case_json"]), "created_at": row["created_at"], "updated_at": row["updated_at"]}
