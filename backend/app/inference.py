@@ -15,10 +15,13 @@ def predict_records(artifact_path: Path, expected_features: list[str], records: 
     model = joblib.load(artifact_path)
     values = model.predict(frame[expected_features])
     predictions = [_json_value(value) for value in values]
-    if not hasattr(model, "predict_proba"):
+    # Some unsupervised estimators expose predict_proba for component
+    # membership, but do not have a supervised class vocabulary.
+    fitted_estimator = model.named_steps.get("model") if hasattr(model, "named_steps") else None
+    if not hasattr(model, "predict_proba") or not hasattr(fitted_estimator, "classes_"):
         return predictions, None
     probabilities = model.predict_proba(frame[expected_features])
-    classes = model.named_steps["model"].classes_
+    classes = fitted_estimator.classes_
     return predictions, [
         {str(_json_value(label)): float(probability) for label, probability in zip(classes, row)}
         for row in probabilities

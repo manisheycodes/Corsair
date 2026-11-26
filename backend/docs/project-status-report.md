@@ -9,14 +9,15 @@
 
 AutoBuild is an agent-assisted tabular AutoML MVP for non-technical users. A user should be able to describe a business prediction problem in plain language, refine and approve a machine-readable brief, upload historical CSV/XLSX data, inspect data-readiness feedback, compare appropriate baseline models, receive a report, download the fitted model, and submit new records for prediction.
 
-This MVP supports only:
+This MVP supports:
 
 - Tabular **classification**.
 - Tabular **regression**.
+- Exploratory tabular **clustering** (no target column; internal quality metrics only).
 - CSV and XLSX uploads up to 25 MB.
 - Local execution with a development API key.
 
-It explicitly does not yet support forecasting, clustering, NLP, computer vision, data connectors, multi-tenancy, live production serving, or real user identity/authentication.
+It explicitly does not yet support forecasting, NLP, computer vision, data connectors, multi-tenancy, live production serving, or real user identity/authentication.
 
 ## 2. Current backend workflow
 
@@ -119,14 +120,17 @@ Current warnings include missing target rows, duplicate records, fully empty col
 
 | Task | Candidates | Primary metric | Validation |
 |---|---|---|---|
-| Classification | Logistic Regression, Random Forest, Histogram Gradient Boosting | F1 (weighted internally) | Stratified cross-validation, up to 5 folds |
-| Regression | Ridge, Random Forest, Histogram Gradient Boosting | MAE | Cross-validation, up to 5 folds |
+| Classification | Logistic Regression, Decision Tree, Random Forest, Extra Trees, AdaBoost, Gradient Boosting, Histogram Gradient Boosting, SVC, KNN | F1 (weighted internally) | Stratified cross-validation, up to 5 folds |
+| Regression | Ridge, Decision Tree, Random Forest, Extra Trees, AdaBoost, Gradient Boosting, Histogram Gradient Boosting, SVR, KNN | MAE | Cross-validation, up to 5 folds |
+| Clustering | K-means, Agglomerative, Gaussian Mixture, DBSCAN, BIRCH | Silhouette (higher is better); Davies–Bouldin also reported | Internal cluster-quality metrics; DBSCAN noise excluded from quality scores and reported separately |
 
 Every candidate is wrapped in a scikit-learn pipeline. Numeric fields use median imputation and scaling; categorical fields use most-frequent imputation and one-hot encoding. The preprocessing is fit inside validation folds, avoiding that class of leakage.
 
 Every candidate now runs through a bounded exhaustive grid search. Logistic/ridge regularization, random-forest depth and leaf size, and histogram-gradient-boosting learning rate and leaf count are tuned. Results retain the winning parameters and configuration count. Numeric missingness indicators, rare-category handling, datetime-derived signals, and identifier exclusion are also performed within the pipeline boundary.
 
 Validation can be stratified/shuffled, group-isolated, or chronological. Supported metrics are F1, accuracy, and ROC AUC for classification, and MAE, RMSE, and R² for regression. Incompatible metric/task combinations are rejected during approval.
+
+Clustering is target-free and exploratory. Its internal scores do not demonstrate business usefulness or predictive accuracy. New-record assignment is offered only for K-means, Gaussian Mixture, and BIRCH; Agglomerative and DBSCAN are fit-once grouping approaches here.
 
 ### Run plan
 

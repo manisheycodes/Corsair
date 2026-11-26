@@ -37,9 +37,9 @@ class DateTimeFeatures(BaseEstimator, TransformerMixin):
 
 
 def prepare_features(
-    frame: pd.DataFrame, target: str, exclude_columns: list[str] | None = None
+    frame: pd.DataFrame, target: str | None, exclude_columns: list[str] | None = None
 ) -> tuple[pd.DataFrame, ColumnTransformer, dict[str, Any]]:
-    raw = frame.drop(columns=[target])
+    raw = frame.drop(columns=[target], errors="ignore") if target else frame.copy()
     diagnostics = analyze_data_risks(frame, target)
     excluded = list(dict.fromkeys([*diagnostics["identifier_candidates"], *(exclude_columns or [])]))
     features = raw.drop(columns=excluded, errors="ignore")

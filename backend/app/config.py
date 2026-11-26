@@ -9,6 +9,9 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 ARTIFACT_DIR = DATA_DIR / "artifacts"
 TEMPLATE_DIR = DATA_DIR / "templates"
 API_KEY = os.getenv("AUTOBUILD_API_KEY", "local-development-key")
+CODEX_EXECUTABLE = os.getenv("AUTOBUILD_CODEX_EXECUTABLE")
+CODEX_MODEL = os.getenv("AUTOBUILD_CODEX_MODEL")
+CODEX_TIMEOUT_SECONDS = int(os.getenv("AUTOBUILD_CODEX_TIMEOUT_SECONDS", "120"))
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 CORS_ORIGINS = tuple(
     origin.strip() for origin in os.getenv("AUTOBUILD_CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",") if origin.strip()
