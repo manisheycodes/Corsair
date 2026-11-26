@@ -1,5 +1,21 @@
 # AutoBuild backend MVP
 
+The revised full-application plan is in [docs/MASTER_PLAN.md](docs/MASTER_PLAN.md). Day 1 (2026-11-26) adds the research library that the autonomous workflow will use.
+
+## Research library
+
+Launch the API normally. Startup creates the SQLite research tables and imports missing reviewed seed cases without replacing existing edits. Three seed tutorials cover classification, regression and clustering. They are labelled tutorials; they are not claimed as field deployments.
+
+- `GET /research/cases` lists records with citations, evidence and unknowns.
+- `POST /research/cases` imports a JSON array of cases matching the OpenAPI schema. Repeating an import does not add duplicate records. Changed claims retain history.
+- `GET /research/cases/{id}` returns the case and its revisions.
+- `GET /research/search?q=handwritten%20digits&task_type=classification` retrieves cited cases and explains matched terms. Optional `limit` is 1–20.
+- `POST /research/refresh` with `{ "force": false }` schedules tracked source checks; `GET /research/refresh` shows progress, timestamps and per-source errors.
+
+These endpoints use the existing `X-API-Key`. Startup and hourly background checks refresh at most three tracked sources due after 24 hours. Set `AUTOBUILD_RESEARCH_REFRESH=false` for offline operation; stored cases remain usable. Page refresh checks title/hash/availability; new-case discovery and automatic scientific extraction are Day 2 work. Retrieval is currently lexical, with semantic retrieval planned alongside agents.
+
+Run checks from `backend` with `..\.venv\Scripts\python.exe -m pytest tests -q -p no:cacheprovider --basetemp=data\day1-pytest`. Tests use a dedicated local database and mocked source requests.
+
 API-first conversational AutoML for tabular classification, regression, and exploratory clustering. The backend accepts a plain-language problem, requires an explicit ML-spec approval, profiles CSV/XLSX data, diagnoses common leakage risks, engineers mixed-type features, tunes candidate pipelines, and supports task-aware evaluation.
 
 ## Run

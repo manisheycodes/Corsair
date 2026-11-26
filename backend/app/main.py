@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 
 from . import db
 from .research_api import router as research_router
-from .research_lifecycle import research_lifespan
+from .research_refresh import research_lifespan
 from .codex_agent import CodexInvocationError, CodexUnavailableError, ask_codex, codex_status, project_context
 from .config import API_KEY, ARTIFACT_DIR, CORS_ORIGINS, DATA_DIR, ENVIRONMENT, MAX_UPLOAD_BYTES, TEMPLATE_DIR, UPLOAD_DIR
 from .inference import predict_records

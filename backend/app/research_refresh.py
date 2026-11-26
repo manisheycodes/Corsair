@@ -1,6 +1,8 @@
 """Bounded refresh of tracked public evidence pages; curated claims remain versioned."""
 import hashlib
 import threading
+import os
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
 from urllib.request import Request, urlopen
@@ -73,3 +75,25 @@ def refresh_status() -> dict:
     latest = db.fetch_one("SELECT * FROM research_refreshes ORDER BY id DESC LIMIT 1")
     return {"running": _lock.locked(), "latest": dict(latest) if latest else None,
             "sources": [dict(row) for row in db.fetch_all("SELECT * FROM research_sources ORDER BY url")]}
+
+
+@asynccontextmanager
+async def research_lifespan(app):
+    from .research_store import initialize
+    from .research_seeds import seed_cases
+
+    initialize()
+    seed_cases()
+    stopped = threading.Event()
+
+    def refresh_loop():
+        while not stopped.is_set():
+            refresh_sources()
+            stopped.wait(3600)
+
+    if os.getenv("AUTOBUILD_RESEARCH_REFRESH", "true").lower() == "true":
+        threading.Thread(target=refresh_loop, name="research-refresh", daemon=True).start()
+    try:
+        yield
+    finally:
+        stopped.set()

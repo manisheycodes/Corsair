@@ -1,6 +1,6 @@
 """Reviewed tutorial cases. Source results are intentionally not transcribed."""
 from .research_schema import ResearchCase
-from .research_store import ingest_cases
+from .research_store import ingest_cases, list_cases, canonical_url
 
 
 def seed_cases() -> dict:
@@ -50,4 +50,6 @@ def seed_cases() -> dict:
             ], "confidence": "curated",
         },
     ]
-    return ingest_cases([ResearchCase(**case) for case in examples])
+    existing = {(canonical_url(case["source_url"]), case["title"].strip().casefold()) for case in list_cases()}
+    return ingest_cases([ResearchCase(**case) for case in examples
+                         if (canonical_url(case["source_url"]), case["title"].strip().casefold()) not in existing])

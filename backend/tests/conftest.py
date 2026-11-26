@@ -3,6 +3,8 @@
 import os
 from pathlib import Path
 
+os.environ["AUTOBUILD_RESEARCH_REFRESH"] = "false"
+
 
 os.environ["AUTOBUILD_DATA_DIR"] = str(
     Path(__file__).resolve().parents[1] / "data" / "test-suite"

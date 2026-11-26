@@ -1,6 +1,6 @@
 # Corsair master implementation plan
 
-Accepted scope: autonomous ML research, evidence retrieval, experiments, streaming simulation, and bounded refinement. Local MVP; production hosting and identities deferred.
+Accepted scope: the complete local application requested by the user: autonomous ML/DL research, evidence retrieval, experiments, streaming simulation, bounded refinement, and a usable frontend. Production hosting and identities are deferred. This is not a reduced MVP. Keep implementation direct: one backend, SQLite, focused Python modules and a frontend; introduce extra infrastructure only when an actual requirement demands it.
 
 ## Architecture
 
@@ -14,11 +14,11 @@ Cases retain source URLs, evidence locators, dataset provenance, model choice, f
 |---|---|---|---|
 | 1 | 2026-11-26 | Structured cases, SQLite store, provenance, deduplication, seed catalog, keyword retrieval, bounded source refresh, APIs | Cases survive restart; duplicate import is idempotent; search returns citations; refresh failures are recorded; offline startup works |
 | 2 | 2026-11-27 | Problem analyst, retrieval-first researcher, targeted discovery, evidence-backed experiment planner | A situation without a dataset produces a cited plan with assumptions and compatible candidate tasks |
-| 3 | 2026-11-28 | Uploaded/referenced/synthetic data paths, isolated experiment runner, baseline training, artifacts | Reproducible experiment with data version, seed, resource budget and failure logs |
+| 3 | 2026-11-28 | Uploaded/referenced/synthetic data paths, isolated experiment runner, ML and supported DL training, artifacts | Reproducible experiments with data version, seed, resource budget and failure logs |
 | 4 | 2026-11-29 | Stream replay, missingness/noise/delay/drift scenarios, evaluation, bounded refinement | All attempts logged; task-specific comparisons; stop by budget, attempts or lack of improvement |
-| 5 | 2026-11-30 | Unified project flow, minimal UI/API demo, cited report, exports, setup walkthrough | One complete tabular scenario from description to report and replayable artifacts |
+| 5 | 2026-11-30 | Complete frontend and unified project flow, cited reports, exports, setup walkthrough | Browser workflow from situation to cited research, data selection, training, stream simulation, refinement and report |
 
-Dates describe work sessions; future days do not run automatically. Scope is a vertical-slice prototype, not arbitrary-domain autonomy. DL case metadata is supported from Day 1; DL execution expands after the tabular slice.
+Dates describe planned work sessions; future days do not run automatically. These are implementation targets, not evidence of completed work. If a requirement takes longer, continue until it works rather than marking it complete as a demo. Support ML and DL through explicit task/model adapters, with clear supported modalities. Domain-specific simulation uses documented assumptions; exact physical realism cannot be inferred from a text description alone.
 
 ## Day 1 implementation contract
 
@@ -29,6 +29,18 @@ Ten commit units: plan; schema; storage; provenance; deduplication; refresh stat
 ## Later implementation contracts
 
 Day 2 agents use structured inputs/outputs and store evidence plus decision history. Research starts with retrieved cases and queries online only for missing/stale evidence. Day 3 datasets retain source/license/accessibility; generators record assumptions. Generated experiment code requires actual isolation and compute bounds. Day 4 distinguishes stream inference from online learning, scores only when labels are available, and reserves untouched evaluation data. Refinement uses declared metrics and records failed as well as successful attempts. Day 5 exposes these distinctions to users.
+
+## Full application completion criteria
+
+- User describes a situation with or without a dataset; the app extracts goals and records assumptions.
+- Periodic research discovers relevant new cases, extracts cited model/data/feature details and retains provenance and unknowns. Retrieval reuses prior research and searches online for missing evidence.
+- Orchestration proposes suitable ML/DL tasks and models, prepares uploaded or referenced data, or constructs a documented synthetic environment.
+- Each compatible candidate is trained and evaluated in isolation. Data streams can contain noise, missingness, outliers, drift and label delays.
+- Predictions, measured quality when ground truth exists, latency, failures, decisions and refinement attempts are inspectable. Experiments stop by declared criteria and can be replayed.
+- The frontend presents research sources, data origins, assumptions, experiments, stream behavior, comparisons, refinement history and downloadable reports/artifacts.
+- Tests exercise the complete workflow and failure recovery. No requirement is considered finished merely because an API stub exists.
+
+Implementation preference: ordinary functions and direct modules; no separate initialization files, speculative abstractions, microservices or orchestration frameworks added for appearance. Existing LangGraph may be reused where it helps. Day 1 is only the research foundation of this full application.
 
 ## Research references
 
