@@ -1,7 +1,7 @@
 """Evidence contracts for documented ML applications and tutorial cases."""
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 
 class Evidence(BaseModel):
@@ -33,6 +33,20 @@ class ResearchCase(BaseModel):
     evidence: list[Evidence] = Field(min_length=1)
     unknowns: list[str] = Field(default_factory=list)
     confidence: Literal["curated", "extracted_unreviewed"] = "extracted_unreviewed"
+
+    @model_validator(mode="after")
+    def evidence_and_unknowns(self):
+        supported = {item.field for item in self.evidence}
+        if not {"situation", "models"}.issubset(supported):
+            raise ValueError("Evidence must identify situation and models")
+        if self.dataset_name and "dataset_name" not in supported:
+            raise ValueError("A named dataset requires dataset_name evidence")
+        if self.model_reason and "model_reason" not in supported:
+            raise ValueError("A model-choice explanation requires model_reason evidence")
+        for name in ("model_reason", "dataset_name", "dataset_license", "reported_results", "published_date"):
+            if getattr(self, name) is None and name not in self.unknowns:
+                self.unknowns.append(name)
+        return self
 
 
 class RefreshRequest(BaseModel):
