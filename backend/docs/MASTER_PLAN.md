@@ -24,7 +24,13 @@ Dates describe planned work sessions; future days do not run automatically. Thes
 
 Use SQLite and lexical retrieval initially. Store curated case summaries with references and evidence sections. Startup seeds offline, then checks due sources in a background task; manual refresh uses the same coordinator. Fetch at most three sources per refresh, cap response size and timeout, retain hashes, timestamps and errors. Refresh source metadata without silently rewriting curated scientific claims. Novel web discovery and semantic extraction belong to Day 2.
 
-Ten commit units: plan; schema; storage; provenance; deduplication; refresh state; cited seeds; retrieval; refresh/API lifecycle; tests and handoff. Preserve existing backend work in a separate baseline commit. Publish to a codex branch using normal Git; never overwrite unrelated edits or force-push existing history.
+Day 1 was originally delivered in ten commit units plus a baseline preserving the earlier backend work. Those published commits remain in history. The updated ongoing commit policy below supersedes that original count.
+
+## Ongoing Git workflow
+
+Target 3–4 meaningful commits per implementation workday, with 7 as the maximum. Group related files by a completed feature or fix; avoid artificial splits and empty commits. A small follow-up alone does not require manufacturing three commits.
+
+Use neutral descriptive branches such as feature/research-foundation-day1 and feature/automl-algorithm-expansion. Commit under the repository owner's configured Git identity. Write commit messages and PR descriptions about the actual feature, changes and verification; do not add agent branding or agent co-author trailers. Keep Codex names when they describe the actual Codex product integration. Do not alter historical authors, fabricate work dates, or rewrite existing published commits to change the activity count.
 
 ## Later implementation contracts
 
