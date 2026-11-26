@@ -10,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from . import db
+from .research_api import router as research_router
+from .research_lifecycle import research_lifespan
 from .codex_agent import CodexInvocationError, CodexUnavailableError, ask_codex, codex_status, project_context
 from .config import API_KEY, ARTIFACT_DIR, CORS_ORIGINS, DATA_DIR, ENVIRONMENT, MAX_UPLOAD_BYTES, TEMPLATE_DIR, UPLOAD_DIR
 from .inference import predict_records
@@ -18,7 +20,7 @@ from .orchestration import run_followup_discovery, run_initial_discovery, workfl
 from .planning import build_run_plan
 from .schemas import ApprovalRequest, CodexAdviceRequest, CodexAdviceResponse, CreateProjectRequest, DatasetResponse, MessageRequest, PredictionRequest, PredictionResponse, ProjectResponse, ProjectSpec, ProjectStatus, RunEvent, RunPlanResponse, RunResponse, WorkflowEvent, WorkflowResponse
 
-app = FastAPI(title="AutoBuild Backend", version="0.2.0")
+app = FastAPI(title="AutoBuild Backend", version="0.2.0", lifespan=research_lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(CORS_ORIGINS),
@@ -34,6 +36,9 @@ db.reconcile_incomplete_runs()
 def require_api_key(request: Request):
     if request.headers.get("X-API-Key") != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+app.include_router(research_router, dependencies=[Depends(require_api_key)])
 
 
 def project_or_404(project_id: str):
